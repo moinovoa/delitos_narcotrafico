@@ -1,17 +1,21 @@
-# SARIMA(0,1,2)(1,0,1) -----
-# Prophet cpr = 0.95, cps=0.5, sps=0.5, hps=10 ----
-# Librerías ----
-library(readxl)
-library(dplyr)
-library(ggplot2)
+# ==============================================================================
+# PROYECTO: Análisis de Incidencia Delictiva
+# SCRIPT: otros.R
+# OBJETIVO: Analizar la serie de tiempo de otros
+# ==============================================================================
+# Mejores modelos 
+# SARIMA(0,1,2)(1,0,1)
+# Prophet cpr = 0.95, cps=0.5, sps=0.5, hps=10
 library(tidyverse)
 library(plotly)
 library(tseries)
 library(forecast)
 library(prophet)
+library(here)
 
 # Funciones ----
 graficar_serie <- function(serie, nombre){
+  # Graficar serie de tiempo
   ggplot(serie, aes(x=FECHA, y=TOTAL))+
     geom_line(color = "black", linewidth = 1) +
     geom_point() +
@@ -20,6 +24,7 @@ graficar_serie <- function(serie, nombre){
   
 }
 graficar_modelos <- function(dataset, nombre){
+  # Graficar serie de tiempo vs ARIMA 1, ARIMA 2, auto ARIMA
   ggplot(dataset, aes(x = FECHA)) +
     geom_line(aes(y = TOTAL, color = "Datos Reales"), size = 1) +
     geom_line(aes(y = PREDICCIONES, color = "Modelo ARIMA"), size = 1, linetype = "dashed") +
@@ -36,6 +41,7 @@ graficar_modelos <- function(dataset, nombre){
     theme(legend.position = "bottom")
 }
 graficar_validacion <- function(train_data, test_data, predichos, pronostico, metricas, nombre){
+  # Graficar serie, ajuste del modelo en train, predicción del test e intervalo de confianza
   plot_validación <- ggplot() +
     geom_line(data = train_data, aes(x = FECHA, y = TOTAL, color = "Entrenamiento"), size = 1) +
     geom_line(data = test_data, aes(x = FECHA, y = TOTAL, color = "Real (Test)"), size = 1) +
@@ -54,35 +60,10 @@ graficar_validacion <- function(train_data, test_data, predichos, pronostico, me
 }
 
 # Creación base inicial ----
-ruta <-"C:\\Users\\mois_\\OneDrive\\Servicio social\\Fuero_federal_2012-2026_feb2026.xlsx" #"C:\\Users\\Moises Novoa\\OneDrive\\nuevodrive\\OneDrive\\Servicio social\\Fuero_federal_2012-2026_feb2026.xlsx"#
-excel_sheets(ruta)
-datos <-read_excel(ruta)
-nas <- datos %>%
-  group_by(AÑO)%>%
-  filter(is.na(MARZO))
-datos_narcotrafico = datos %>%
-  filter(CONCEPTO == "CONTRA LA SALUD")
-conteo_ordenado <- datos_narcotrafico %>% 
-  count(TIPO, sort = TRUE)
-datos_narcotrafico <- datos_narcotrafico %>%
-  pivot_longer(
-    cols = ENERO:DICIEMBRE, 
-    names_to = "MES",      
-    values_to = "CONTEO"    
-  ) 
-datos_narcotrafico <- datos_narcotrafico %>% mutate(
-  MES_NUM = match(MES, c("ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", 
-                         "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", 
-                         "NOVIEMBRE", "DICIEMBRE")),
-  FECHA = as.Date(paste(AÑO, MES_NUM, "01", sep = "-"))
-)
-datos_narcotrafico <- datos_narcotrafico[, c("AÑO", "MES_NUM", "MES", "FECHA", 
-                                             "INEGI", "ENTIDAD", "LEY", "CONCEPTO",
-                                             "TIPO", "CONTEO")]
-conteo_delito <- datos_narcotrafico %>%
-  group_by(TIPO) %>%
-  summarize(SUMA = sum(CONTEO, na.rm = TRUE))
+# Leer archivo inicial
+datos_narcotrafico <- readRDS(here('data', 'datos_narcotrafico.rds'))
 
+# Creación base otros
 otros <- datos_narcotrafico %>%
   filter(TIPO == "OTROS") %>%
   group_by(FECHA) %>%
@@ -100,9 +81,11 @@ metricas_otros <- data.frame(Año = numeric(),
                                 stringsAsFactors = FALSE)
 
 # Grid ----
+# Realizar Grid para los mejores parámetros de Prophet
 datos_prophet <- otros %>%
   select(ds = FECHA, y = TOTAL)
 
+# Manejar outliers
 bache_evento <- data.frame(
   holiday = 'bache_suministro',
   ds = seq(as.Date("2018-02-01"), as.Date("2018-12-01"), by = "month"),
@@ -110,12 +93,14 @@ bache_evento <- data.frame(
   upper_window = 3
 )
 
+# Dividir en Train/Test
 n_total <- nrow(datos_prophet)
 n_train <- n_total-12
 
 train_data <- datos_prophet[1:n_train, ]
 test_data  <- datos_prophet[(n_train+1):n_total, ]
 
+# Parámetros del GRID
 range_grid <- c(0.8, 0.9, 0.95)
 changepoints_grid <- c(0.3, 0.01, 0.05, 0.1, 0.5)
 seasonality_grid  <- c(1.0, 5.0, 10.0, 20.0, 0.5)
@@ -128,8 +113,10 @@ grid <- expand.grid(
   holidays.prior.scale = holidays_grid)
 resultados_optimizacion <- data.frame()
 
+# Ajustar el Grid
 for(i in 1:nrow(grid)) {
   
+  # Ajustar los parámetros a un modelo temporal
   m_temp <- prophet(
     train_data, 
     holidays = bache_evento,
@@ -142,6 +129,7 @@ for(i in 1:nrow(grid)) {
     daily.seasonality = FALSE
   )
   
+  # Cross validation del modelo temporal
   df_cv <- cross_validation(
     m_temp, 
     initial = 365 * 8,  
@@ -150,8 +138,10 @@ for(i in 1:nrow(grid)) {
     units = 'days'
   )
   
+  # Guardar métricas del modelo temporal
   df_p <- performance_metrics(df_cv)
   
+  # Guardar parámetros del modelo temporal
   resultado_temp <- data.frame(
     range = grid$changepoint.range[i],
     changepoint = grid$changepoint.prior.scale[i],
@@ -160,9 +150,11 @@ for(i in 1:nrow(grid)) {
     rmse_promedio = mean(df_p$rmse)
   )
   
+  # Juntar métricas y parámetros
   resultados_optimizacion <- bind_rows(resultados_optimizacion, resultado_temp)
 }
 
+# Mostrar mejor resultado usando RMSE para ordenar
 mejor_combinacion <- resultados_optimizacion %>% 
   arrange(rmse_promedio) %>% 
   head(1)

@@ -1,17 +1,21 @@
-# SARIMA(1,1,0)(2,0,0) ----
-# Prophet cpr = 0.95, cps=0.01, sps=20, hps=40 ----
-# Librerías ----
-library(readxl)
-library(dplyr)
-library(ggplot2)
+# ==============================================================================
+# PROYECTO: Análisis de Incidencia Delictiva
+# SCRIPT: transporte.R
+# OBJETIVO: Analizar la serie de tiempo de transporte
+# ==============================================================================
+# Mejores modelos 
+# SARIMA(1,1,0)(2,0,0)
+# Prophet cpr = 0.95, cps=0.01, sps=20, hps=40
 library(tidyverse)
 library(plotly)
 library(tseries)
 library(forecast)
 library(prophet)
+library(here)
 
 # Funciones ----
 graficar_serie <- function(serie, nombre){
+  # Graficar serie de tiempo
   ggplot(serie, aes(x=FECHA, y=TOTAL))+
     geom_line(color = "black", linewidth = 1) +
     geom_point() +
@@ -20,6 +24,7 @@ graficar_serie <- function(serie, nombre){
   
 }
 graficar_modelos <- function(dataset, nombre){
+  # Graficar serie de tiempo vs ARIMA 1, ARIMA 2, auto ARIMA
   ggplot(dataset, aes(x = FECHA)) +
     geom_line(aes(y = TOTAL, color = "Datos Reales"), size = 1) +
     geom_line(aes(y = PREDICCIONES, color = "Modelo ARIMA"), size = 1, linetype = "dashed") +
@@ -36,6 +41,7 @@ graficar_modelos <- function(dataset, nombre){
     theme(legend.position = "bottom")
 }
 graficar_validacion <- function(train_data, test_data, predichos, pronostico, metricas, nombre){
+  # Graficar serie, ajuste del modelo en train, predicción del test e intervalo de confianza
   plot_validación <- ggplot() +
     geom_line(data = train_data, aes(x = FECHA, y = TOTAL, color = "Entrenamiento"), size = 1) +
     geom_line(data = test_data, aes(x = FECHA, y = TOTAL, color = "Real (Test)"), size = 1) +
@@ -54,35 +60,10 @@ graficar_validacion <- function(train_data, test_data, predichos, pronostico, me
 }
 
 # Creación base inicial ----
-ruta <-"C:\\Users\\mois_\\OneDrive\\Servicio social\\Fuero_federal_2012-2026_feb2026.xlsx" #"C:\\Users\\Moises Novoa\\OneDrive\\nuevodrive\\OneDrive\\Servicio social\\Fuero_federal_2012-2026_feb2026.xlsx"#
-excel_sheets(ruta)
-datos <-read_excel(ruta)
-nas <- datos %>%
-  group_by(AÑO)%>%
-  filter(is.na(MARZO))
-datos_narcotrafico = datos %>%
-  filter(CONCEPTO == "CONTRA LA SALUD")
-conteo_ordenado <- datos_narcotrafico %>% 
-  count(TIPO, sort = TRUE)
-datos_narcotrafico <- datos_narcotrafico %>%
-  pivot_longer(
-    cols = ENERO:DICIEMBRE, 
-    names_to = "MES",      
-    values_to = "CONTEO"    
-  ) 
-datos_narcotrafico <- datos_narcotrafico %>% mutate(
-  MES_NUM = match(MES, c("ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", 
-                         "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", 
-                         "NOVIEMBRE", "DICIEMBRE")),
-  FECHA = as.Date(paste(AÑO, MES_NUM, "01", sep = "-"))
-)
-datos_narcotrafico <- datos_narcotrafico[, c("AÑO", "MES_NUM", "MES", "FECHA", 
-                                             "INEGI", "ENTIDAD", "LEY", "CONCEPTO",
-                                             "TIPO", "CONTEO")]
-conteo_delito <- datos_narcotrafico %>%
-  group_by(TIPO) %>%
-  summarize(SUMA = sum(CONTEO, na.rm = TRUE))
+# Leer archivo inicial
+datos_narcotrafico <- readRDS(here('data', 'datos_narcotrafico.rds'))
 
+# Creación base transporte
 transporte <- datos_narcotrafico %>%
   filter(TIPO == "TRANSPORTE") %>%
   group_by(FECHA) %>%
